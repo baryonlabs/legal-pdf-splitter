@@ -23,7 +23,7 @@
 
 ## 실행 결과 화면
 
-![실행 예시](https://raw.githubusercontent.com/baryonlabs/legal-pdf-splitter/main/%EC%8A%A4%ED%81%AC%EB%A6%B0%EC%83%B7.png)
+![실행 예시]([https://raw.githubusercontent.com/baryonlabs/legal-pdf-splitter/main/%EC%8A%A4%ED%81%AC%EB%A6%B0%EC%83%B7.png](https://github.com/baryonlabs/legal-pdf-splitter/blob/main/%E1%84%89%E1%85%B3%E1%84%8F%E1%85%B3%E1%84%85%E1%85%B5%E1%86%AB%E1%84%89%E1%85%A3%E1%86%BA.png?raw=true))
 
 *Claude Code(AI 어시스턴트)가 자동으로 실행한 화면. 을제4호증(6페이지 묶음)부터 을제19호증까지 한 번에 분리 완료.*
 
