@@ -1,54 +1,96 @@
-# legal-pdf-splitter
+# 법원 제출용 PDF 분리 도구
 
-Korean legal document PDF splitter — separates a combined brief + exhibits PDF into individual files.
+준비서면과 증거를 하나의 PDF로 만든 후, 이 프로그램으로 **준비서면**과 **증거별 개별 파일**로 자동 분리합니다.
 
-## What it does
+## 이 프로그램이 필요한 이유
 
-Korean legal briefs (준비서면) are often submitted as a single PDF that includes both the brief text and attached exhibits (을호증, 갑호증). This tool splits that combined file into:
+법원에 제출하는 준비서면에는 보통 을호증·갑호증 등 증거가 뒤에 첨부됩니다.  
+전자소송 시스템에 등록할 때는 **준비서면 따로 / 각 증거 따로** 파일을 올려야 하므로,  
+하나의 통합 PDF를 매번 수동으로 나누는 작업이 번거롭습니다.
 
-- **`<name>_준비서면.pdf`** — the brief pages only
-- **`을제1호증.pdf`**, **`을제2호증.pdf`**, … — one file per exhibit, with multi-page exhibits automatically grouped
+이 도구는 그 작업을 자동화합니다.
 
-## Install
+---
+
+## 준비 사항
+
+Python 3.10 이상이 설치되어 있어야 합니다.  
+처음 한 번만 아래 명령어로 필요한 패키지를 설치하세요.
 
 ```bash
 pip install pypdf
 ```
 
-## Usage
+---
+
+## 사용 방법
 
 ```bash
-python split.py <pdf_file> --brief-pages <N> [--output-dir <dir>]
+python split.py <PDF 파일 경로> --brief-pages <준비서면 페이지 수>
 ```
 
-| Argument | Description |
+### 옵션 설명
+
+| 옵션 | 설명 |
 |---|---|
-| `pdf` | Path to the input PDF |
-| `--brief-pages N` | Number of pages that belong to the brief (exhibits start after page N) |
-| `--output-dir` | Output folder (default: same folder as the input PDF) |
+| `PDF 파일 경로` | 분리할 PDF 파일의 경로 |
+| `--brief-pages N` | 준비서면에 해당하는 페이지 수 (이 페이지까지가 준비서면, 그 다음부터 증거) |
+| `--output-dir 경로` | 결과 파일을 저장할 폴더 (생략 시 원본 PDF와 같은 폴더에 저장) |
 
-## Example
+---
+
+## 사용 예시
 
 ```bash
-python split.py brief_2026-05-12.pdf --brief-pages 32
+python split.py 준비서면_피고_2026-05-15.pdf --brief-pages 32
 ```
 
-Output in the same directory:
+실행하면 같은 폴더에 아래와 같이 파일이 생성됩니다:
+
 ```
-brief_2026-05-12_준비서면.pdf   (32 pages)
-을제4호증.pdf                   (6 pages — auto-grouped sub-exhibits 4-1 ~ 4-6)
-을제5호증.pdf                   (2 pages)
-을제6호증.pdf
-을제7호증.pdf
-을제8호증.pdf                   (2 pages)
-을제9호증.pdf
+준비서면_피고_2026-05-15_준비서면.pdf   ← 준비서면 (32페이지)
+을제1호증.pdf                            ← 을 제1-1호증 ~ 제1-6호증 자동 묶음 (6페이지)
+을제2호증.pdf                            ← 을 제2호증-1, -2 자동 묶음 (2페이지)
+을제3호증.pdf
+을제4호증.pdf
+을제5호증.pdf
 ```
 
-## How grouping works
+결과 파일을 저장할 폴더를 따로 지정하고 싶을 때:
 
-Pages are scanned for exhibit labels (e.g. `을 제4-1호증`, `을제4호증-2`). Pages sharing the same base number (e.g. all `을4`) are merged into a single output file. Useful when one exhibit spans multiple screenshot pages.
+```bash
+python split.py 준비서면.pdf --brief-pages 32 --output-dir ./분리결과
+```
 
-## Requirements
+---
 
-- Python 3.10+
-- pypdf ≥ 4.0.0
+## 증거 자동 묶음 방식
+
+각 페이지 상단의 증거 표기(예: `을 제1-1호증`, `을제1호증-2`)를 자동으로 인식합니다.  
+같은 기본 번호(예: `을제1호증`)에 속하는 페이지들은 하나의 파일로 합쳐집니다.
+
+예를 들어 PDF 안에 다음과 같은 순서로 페이지가 있으면:
+
+| PDF 페이지 | 증거 표기 |
+|---|---|
+| 33 | 을 제1-1호증 |
+| 34 | 을 제1-2호증 |
+| 35 | 을 제1-3호증 |
+| 36 | 을 제2호증-1 |
+| 37 | 을 제2호증-2 |
+
+→ `을제1호증.pdf` (3페이지), `을제2호증.pdf` (2페이지)로 자동 묶어 저장합니다.
+
+---
+
+## 작업 흐름 요약
+
+1. Word(또는 한글)로 준비서면을 작성하고, 증거 이미지를 뒤에 붙여 PDF로 저장
+2. 이 프로그램 실행
+3. 생성된 파일들을 전자소송 시스템에 각각 등록
+
+---
+
+## 문의
+
+- GitHub: [baryonlabs/legal-pdf-splitter](https://github.com/baryonlabs/legal-pdf-splitter)

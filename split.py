@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-legal-pdf-splitter: Split Korean legal document PDFs into brief + individual exhibits.
+법원 제출용 PDF 분리 도구
+============================
+준비서면과 증거가 합쳐진 PDF를 준비서면 파일 + 증거별 개별 파일로 자동 분리합니다.
 
-Usage:
-    python split.py <pdf_file> --brief-pages <N> [--output-dir <dir>]
+사용법:
+    python split.py <PDF 파일> --brief-pages <준비서면 페이지 수>
 
-Example:
-    python split.py brief_with_exhibits.pdf --brief-pages 32
-    python split.py brief_with_exhibits.pdf --brief-pages 32 --output-dir ./output
+예시:
+    python split.py 준비서면_2026-05-15.pdf --brief-pages 32
+    python split.py 준비서면_2026-05-15.pdf --brief-pages 32 --output-dir ./분리결과
 """
 
 import argparse
@@ -18,140 +20,147 @@ import sys
 try:
     from pypdf import PdfReader, PdfWriter
 except ImportError:
-    print("Error: pypdf is required. Run: pip install pypdf")
+    print("오류: pypdf 패키지가 필요합니다.")
+    print("아래 명령어로 설치하세요: pip install pypdf")
     sys.exit(1)
 
 
-def extract_exhibit_number(text: str) -> str | None:
+def 증거번호_추출(페이지_텍스트: str) -> str | None:
     """
-    Extract exhibit number from page text.
-    Matches patterns like:
-      을 제1호증, 을 제1-2호증, 을 제1호증-2, 갑 제3호증, etc.
-    Returns a normalized key like '을1', '을1-2', '갑3'.
+    페이지 상단 텍스트에서 증거 번호를 추출합니다.
+
+    인식 가능한 형식 예시:
+      을 제1호증, 을제1-2호증, 을 제1호증-2, 갑제3호증 등
+
+    반환값: '을1', '갑3' 형태의 정규화된 키 (같은 번호면 같은 파일로 묶음)
     """
-    # Match: 을/갑 + optional space + 제 + number + optional sub-number + 호증
-    pattern = r'([을갑])\s*제\s*(\d+)(?:[–\-](\d+))?\s*호증(?:[–\-](\d+))?'
-    m = re.search(pattern, text[:200])  # only look at top of page
-    if not m:
+    패턴 = r'([을갑])\s*제\s*(\d+)(?:[–\-](\d+))?\s*호증(?:[–\-](\d+))?'
+    결과 = re.search(패턴, 페이지_텍스트[:300])
+    if not 결과:
         return None
 
-    party = m.group(1)          # 을 or 갑
-    main = m.group(2)           # main number
-    sub_a = m.group(3)          # e.g. "1-2호증" → sub_a=2
-    sub_b = m.group(4)          # e.g. "을제1호증-2" → sub_b=2
+    당사자 = 결과.group(1)   # 을 또는 갑
+    메인번호 = 결과.group(2)  # 기본 번호
 
-    # Normalize sub-numbering: treat both forms as same exhibit group
-    # 을제1-1호증, 을제1-2호증 → key '을1'
-    # 을제1호증-1, 을제1호증-2 → key '을1'
-    # 을제2호증 → key '을2'
-    key = f"{party}{main}"
-    return key
+    # 을제1-1호증, 을제1-2호증 → 모두 키 '을1' 로 묶음
+    return f"{당사자}{메인번호}"
 
 
-def detect_groups(reader: PdfReader, start_page: int) -> list[tuple[str, list[int]]]:
+def 증거_그룹_탐지(reader: PdfReader, 시작페이지: int) -> list[tuple[str, list[int]]]:
     """
-    Scan pages from start_page onward and group consecutive pages by exhibit number.
-    Returns list of (exhibit_key, [page_indices]).
+    시작페이지 이후의 페이지들을 스캔하여 같은 증거번호끼리 묶습니다.
+    반환: [(증거키, [페이지인덱스, ...]), ...]
     """
-    groups: list[tuple[str, list[int]]] = []
-    current_key = None
-    current_pages: list[int] = []
+    그룹목록: list[tuple[str, list[int]]] = []
+    현재키 = None
+    현재페이지들: list[int] = []
 
-    for i in range(start_page, len(reader.pages)):
-        text = reader.pages[i].extract_text() or ""
-        key = extract_exhibit_number(text)
+    for i in range(시작페이지, len(reader.pages)):
+        텍스트 = reader.pages[i].extract_text() or ""
+        키 = 증거번호_추출(텍스트)
 
-        if key is None:
-            # No exhibit label found — attach to current group or make unnamed
-            if current_key is not None:
-                current_pages.append(i)
+        if 키 is None:
+            # 증거 표기가 없으면 현재 그룹에 포함 (연속 페이지 처리)
+            if 현재키 is not None:
+                현재페이지들.append(i)
             else:
-                # Orphan page — create its own group
-                groups.append((f"page{i+1}", [i]))
-        elif key != current_key:
-            if current_key is not None:
-                groups.append((current_key, current_pages))
-            current_key = key
-            current_pages = [i]
+                그룹목록.append((f"미분류_{i+1}페이지", [i]))
+        elif 키 != 현재키:
+            if 현재키 is not None:
+                그룹목록.append((현재키, 현재페이지들))
+            현재키 = 키
+            현재페이지들 = [i]
         else:
-            current_pages.append(i)
+            현재페이지들.append(i)
 
-    if current_key is not None and current_pages:
-        groups.append((current_key, current_pages))
+    if 현재키 is not None and 현재페이지들:
+        그룹목록.append((현재키, 현재페이지들))
 
-    return groups
+    return 그룹목록
 
 
-def save_pages(reader: PdfReader, indices: list[int], path: str) -> None:
+def PDF저장(reader: PdfReader, 페이지목록: list[int], 저장경로: str) -> None:
     writer = PdfWriter()
-    for i in indices:
+    for i in 페이지목록:
         writer.add_page(reader.pages[i])
-    with open(path, "wb") as f:
+    with open(저장경로, "wb") as f:
         writer.write(f)
 
 
-def exhibit_filename(key: str) -> str:
-    """Convert exhibit key like '을1' → '을제1호증.pdf'"""
-    m = re.match(r'([을갑])(\d+)', key)
+def 파일명_생성(키: str) -> str:
+    """'을1' → '을제1호증.pdf', '갑3' → '갑제3호증.pdf'"""
+    m = re.match(r'([을갑])(\d+)', 키)
     if m:
         return f"{m.group(1)}제{m.group(2)}호증.pdf"
-    return f"{key}.pdf"
+    return f"{키}.pdf"
 
 
-def split(pdf_path: str, brief_pages: int, output_dir: str) -> None:
-    os.makedirs(output_dir, exist_ok=True)
+def 분리실행(pdf_경로: str, 준비서면_페이지수: int, 출력폴더: str) -> None:
+    os.makedirs(출력폴더, exist_ok=True)
 
-    reader = PdfReader(pdf_path)
-    total = len(reader.pages)
+    reader = PdfReader(pdf_경로)
+    전체페이지 = len(reader.pages)
 
-    print(f"PDF: {os.path.basename(pdf_path)}  ({total} pages total)")
-    print(f"Brief: pages 1–{brief_pages}  |  Exhibits: pages {brief_pages+1}–{total}\n")
+    print(f"\n파일: {os.path.basename(pdf_경로)}  (총 {전체페이지}페이지)")
+    print(f"준비서면: 1~{준비서면_페이지수}페이지  |  증거: {준비서면_페이지수+1}~{전체페이지}페이지\n")
+    print("-" * 50)
 
-    # 1. Save brief
-    stem = os.path.splitext(os.path.basename(pdf_path))[0]
-    brief_path = os.path.join(output_dir, f"{stem}_준비서면.pdf")
-    save_pages(reader, list(range(brief_pages)), brief_path)
-    print(f"✓ 준비서면  →  {os.path.basename(brief_path)}  ({brief_pages}p)")
+    # 1. 준비서면 저장
+    원본명 = os.path.splitext(os.path.basename(pdf_경로))[0]
+    준비서면_경로 = os.path.join(출력폴더, f"{원본명}_준비서면.pdf")
+    PDF저장(reader, list(range(준비서면_페이지수)), 준비서면_경로)
+    print(f"✓ 준비서면  →  {os.path.basename(준비서면_경로)}  ({준비서면_페이지수}페이지)")
 
-    # 2. Detect and save exhibits
-    groups = detect_groups(reader, brief_pages)
-    if not groups:
-        print("No exhibits found after the brief pages.")
+    # 2. 증거 그룹 탐지 및 저장
+    그룹목록 = 증거_그룹_탐지(reader, 준비서면_페이지수)
+
+    if not 그룹목록:
+        print("\n증거 페이지가 발견되지 않았습니다.")
         return
 
-    for key, indices in groups:
-        fname = exhibit_filename(key)
-        out_path = os.path.join(output_dir, fname)
-        save_pages(reader, indices, out_path)
-        print(f"✓ {key}  →  {fname}  ({len(indices)}p)")
+    for 키, 페이지목록 in 그룹목록:
+        파일명 = 파일명_생성(키)
+        저장경로 = os.path.join(출력폴더, 파일명)
+        PDF저장(reader, 페이지목록, 저장경로)
+        print(f"✓ {파일명:<25}  ({len(페이지목록)}페이지)")
 
-    print(f"\n총 {1 + len(groups)}개 파일 생성  →  {output_dir}")
+    print("-" * 50)
+    print(f"\n완료: 총 {1 + len(그룹목록)}개 파일 생성")
+    print(f"저장 위치: {출력폴더}\n")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Split a Korean legal PDF into brief + individual exhibit files."
+        description="준비서면 + 증거 PDF를 개별 파일로 분리합니다.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+사용 예시:
+  python split.py 준비서면_2026-05-15.pdf --brief-pages 32
+  python split.py 준비서면_2026-05-15.pdf --brief-pages 32 --output-dir ./분리결과
+        """
     )
-    parser.add_argument("pdf", help="Input PDF file path")
+    parser.add_argument("pdf", help="분리할 PDF 파일 경로")
     parser.add_argument(
         "--brief-pages", "-n",
         type=int,
         required=True,
-        help="Number of pages belonging to the brief (준비서면). Exhibits start after this.",
+        metavar="N",
+        help="준비서면 페이지 수 (1페이지부터 N페이지까지가 준비서면, N+1페이지부터 증거)",
     )
     parser.add_argument(
         "--output-dir", "-o",
         default=None,
-        help="Output directory (default: same directory as the input PDF)",
+        metavar="폴더",
+        help="결과 파일 저장 폴더 (생략 시 원본 PDF와 같은 폴더)",
     )
     args = parser.parse_args()
 
     if not os.path.isfile(args.pdf):
-        print(f"Error: file not found: {args.pdf}")
+        print(f"오류: 파일을 찾을 수 없습니다 → {args.pdf}")
         sys.exit(1)
 
-    output_dir = args.output_dir or os.path.dirname(os.path.abspath(args.pdf))
-    split(args.pdf, args.brief_pages, output_dir)
+    출력폴더 = args.output_dir or os.path.dirname(os.path.abspath(args.pdf))
+    분리실행(args.pdf, args.brief_pages, 출력폴더)
 
 
 if __name__ == "__main__":
